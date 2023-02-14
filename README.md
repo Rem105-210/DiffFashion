@@ -22,9 +22,9 @@ coming soon
 
 ## Example
 
-![images](https://github.com/Rem105-210/DiffFashion/tree/main/IMG/title.png)
+![images](IMG/title.png)
 
-![images](https://github.com/Rem105-210/DiffFashion/tree/main/IMG/res.png)
+![images](IMG/res.png)
 
 
 
