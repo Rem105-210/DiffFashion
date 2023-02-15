@@ -2,7 +2,7 @@
 
 DiffFashion is a method for Fashion Design with a referenced natural image.
 
-![images](https://github.com/Rem105-210/DiffFashion/tree/main/IMG/framework.png)
+![images](IMG/framework.png)
 
 ## Getting Started
 
@@ -22,9 +22,9 @@ coming soon
 
 ## Example
 
-![images](https://github.com/Rem105-210/DiffFashion/tree/main/IMG/title.png)
+![images](IMG/title.png)
 
-![images](https://github.com/Rem105-210/DiffFashion/tree/main/IMG/res.png)
+![images](IMG/res.png)
 
 
 
