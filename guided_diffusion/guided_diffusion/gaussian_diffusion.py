@@ -213,7 +213,6 @@ class GaussianDiffusion:
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
     def p_mean_variance(self, model, x, t, clip_denoised=True, denoised_fn=None, model_kwargs=None):
-        # 用Unet去从xt和timestamp来得到xt-1的均值和方差
         """
         Apply the model to get p(x_{t-1} | x_t), as well as a prediction of
         the initial x, x_0.
@@ -234,8 +233,7 @@ class GaussianDiffusion:
                  - 'log_variance': the log of 'variance'.
                  - 'pred_xstart': the prediction for x_0.
         """
-        # var type是LEARN_RANGE
-        # mean type是EPSILON
+
         if model_kwargs is None:
             model_kwargs = {}
 
@@ -244,18 +242,16 @@ class GaussianDiffusion:
         model_output = model(x, self._scale_timesteps(t), **model_kwargs)
 
         if self.model_var_type in [ModelVarType.LEARNED, ModelVarType.LEARNED_RANGE]:
-            # 如果定义的方差类型是可学习的
-            # 两种，一个是直接去预测方差，一个是去预测方差的范围（iddpm）
-            # 如果这样的话，通道数是翻倍的C（均值）--->2C（均值和方差）
+
             assert model_output.shape == (B, C * 2, *x.shape[2:])
             model_output, model_var_values = th.split(model_output, C, dim=1)
             if self.model_var_type == ModelVarType.LEARNED:
 
                 model_log_variance = model_var_values
                 model_variance = th.exp(model_log_variance)
-                # 预测对数方差然后直接取指数
+
             else:
-                # 预测方差的范围
+
                 min_log = _extract_into_tensor(self.posterior_log_variance_clipped, t, x.shape)
                 max_log = _extract_into_tensor(np.log(self.betas), t, x.shape)
                 # The model_var_values is [-1, 1] for [min_var, max_var].
@@ -263,8 +259,7 @@ class GaussianDiffusion:
                 model_log_variance = frac * max_log + (1 - frac) * min_log
                 model_variance = th.exp(model_log_variance)
         else:
-            # 对于不可学习的方差来说
-            # 需要我们从以往的b中来收集出来第t时刻的方差
+
             model_variance, model_log_variance = {
                 # for fixedlarge, we set the initial (log-)variance like so
                 # to get a better decoder log likelihood.
@@ -279,37 +274,35 @@ class GaussianDiffusion:
             }[self.model_var_type]
             model_variance = _extract_into_tensor(model_variance, t, x.shape)
             model_log_variance = _extract_into_tensor(model_log_variance, t, x.shape)
-            # 抽出来第t步的方差
+
 
         def process_xstart(x):
-            # 对x进行一定的处理
+
             if denoised_fn is not None:
                 x = denoised_fn(x)
             if clip_denoised:
                 return x.clamp(-1, 1)
             return x
 
-        # 来预测均值
-        # 有三种 一个是预测噪声一个是预测xt-1一个是预测x0
+
         if self.model_mean_type == ModelMeanType.PREVIOUS_X:
-            # 直接去预测xt-1的u
+
             pred_xstart = process_xstart(
                 self._predict_xstart_from_xprev(x_t=x, t=t, xprev=model_output)
             )
-            # 还算了一个量，在训练时候不会用，后面的evaluate会用
-            # 知道了xt和xt-1，来计算x0
+
             model_mean = model_output
-            # 那么modelmean等于modeloutput
+
         elif self.model_mean_type in [ModelMeanType.START_X, ModelMeanType.EPSILON]:
             if self.model_mean_type == ModelMeanType.START_X:
                 pred_xstart = process_xstart(model_output)
             else:
-                # 预测噪声，那么需要我们去预测一下x0，再由x0来计算噪声
+
                 pred_xstart = process_xstart(
                     self._predict_xstart_from_eps(x_t=x, t=t, eps=model_output)
-                    # 上面这个 函数是用来从xt和t来预测x0的
+
                 )
-            # 从x0,t,xt来得出xt-1的均值
+
             model_mean, _, _ = self.q_posterior_mean_variance(x_start=pred_xstart, x_t=x, t=t)
         else:
             raise NotImplementedError(self.model_mean_type)
@@ -473,8 +466,7 @@ class GaussianDiffusion:
         return final["sample"]
 
     def dual_sample_loop(
-            # 这里有bug
-            # 呜呜呜
+
             self,
             model,
             shape,
@@ -493,7 +485,7 @@ class GaussianDiffusion:
             randomize_class=False,
             find_init=False
     ):
-        # 去推理的一个过程
+
         if device is None:
             device = next(model.parameters()).device
         assert isinstance(shape, (tuple, list))
@@ -501,14 +493,14 @@ class GaussianDiffusion:
             img = noise
         else:
             img = th.randn(*shape, device=device)
-        # 生成T时刻（最后一个时刻）一个标准的噪声
+
 
         if skip_timesteps and init_image is None:
             init_image = th.zeros_like(img)
-        # 如果不输入init_image则代表让我们进行随机采样
+
 
         indices = list(range(self.num_timesteps - skip_timesteps))[::-1]
-        # 得到一个time_step的时刻，然后将这个range进行逆序，从T..到0
+
 
         batch_size = shape[0]
         init_image_batch = th.tile(init_image, dims=(batch_size, 1, 1, 1))
@@ -533,8 +525,6 @@ class GaussianDiffusion:
         e_image_pil = TF.to_pil_image(gai)
         e_image_pil.save('outputs/onlyclip/yt.png')
 
-        # 输入加的噪声XT，第一个时间戳，和原始图片
-        # 得到的img是加噪后的图片
         if progress:
             # Lazy import so that we don't depend on tqdm.
             from tqdm.auto import tqdm
@@ -547,23 +537,23 @@ class GaussianDiffusion:
                 indices = tqdm(indices)
             image_after_step = img
             for i in indices:
-                # 对这个时间进行遍历
+
                 if flag:
-                    # 除了步骤XT都进来
+
                     img = th.randn(*shape, device=device)
-                    # 生成随机噪声
+
                     img = self.q_sample(
                         x_start=init_image_batch,
                         t=th.tensor([i] * shape[0], device=device),
                         noise=img,
                     )
                     image_after_step = img
-                    # 生成这个timestep的前向加噪图（从后向前）
+
                 if i == self.num_timesteps - skip_timesteps - 1:
-                    # XT时候从这里
+
                     for r in range(10):
                         t = th.tensor([i] * shape[0], device=device)
-                        # 循环10个timestep
+
                         if randomize_class and "y" in model_kwargs:
                             model_kwargs["y"] = th.randint(
                                 low=0,
@@ -571,39 +561,31 @@ class GaussianDiffusion:
                                 size=model_kwargs["y"].shape,
                                 device=model_kwargs["y"].device,
                             )
-                        # 如果是condition的，并且没有给condition的classlabel
-                        # 那么我就自己随机生成一个
-                        # 我日你妈，torch简写th的是吧
+
                         with th.no_grad():
                             out = self.p_sample(
                                 model,
                                 image_after_step,
-                                # 接受上一步的噪声图来的
                                 t,
                                 clip_denoised=clip_denoised,
                                 denoised_fn=denoised_fn,
                                 cond_fn=cond_fn,
                                 model_kwargs=model_kwargs,
                             )
-                            # 将当前的t和image_t得到out，t不断变化
 
                             if postprocess_fn is not None:
                                 out = postprocess_fn(out, t)
-                            # p_sample + 后处理
-                            # 得到的out是根据当前的噪声图来预测的Xt-1
+
 
                             yield out
-                            # yield就够了 传回参数
                             flag = out["flag"]
                             image_after_step = out["sample"]
 
                         image_before_step = image_after_step.clone()
                         if r != 9:
-                            # 如果不是第10步 貌似用了之后用了前向噪声的的方差来修正
                             image_after_step = self.undo(
                                 image_before_step, image_after_step,
                                 est_x_0=out['pred_xstart'], t=t - 1, debug=False)
-                            # 这传进去的两个参数一样。。。
                         if flag:
                             break
                     if flag:
@@ -658,7 +640,6 @@ class GaussianDiffusion:
     def h_sample(
             self, model, x, t, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None,
     ):
-        # 从xt去采样出来xt-1
         """
         Sample x_{t-1} from the model at the given timestep.
 
@@ -684,27 +665,19 @@ class GaussianDiffusion:
             denoised_fn=denoised_fn,
             model_kwargs=model_kwargs,
         )
-        # out的输出，有这一步出来的均值，方差，预测的x0等等
-        # 在推理的时候，会不断地调用p_sample函数来得到x0
-        # 用model得出来xt-1均值和方差
+
         noise = th.randn_like(x)
-        # 采样得到去噪的噪声
+
         nonzero_mask = (
             (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
         )  # no noise when t == 0
         flag = None
         if cond_fn is not None:
-            # classifier的时候
-            # 需要对mean进行修正 用classifier进行修正
-            # 这里就是需要用到的是cond_fn给过来的梯度
+
             out["mean"], flag = self.condition_mean(cond_fn, out, x, t, model_kwargs=model_kwargs)
 
-        # 0.5是为了得到标准差
-        # 有了均值和方差就可以采样出来xt
-        # 标准差 = 0.5乘以一个倍数方差再指数运算
-        # 因为0.5是用来开根号的
+
         sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
-        # sample 即为下次的样本，完成一次去噪
         return {"sample": sample, "pred_xstart": out["pred_xstart"], "flag": flag}
 
     def h_sample_loop(
@@ -784,7 +757,6 @@ class GaussianDiffusion:
             vit_func=None,
             find_init=False
     ):
-        # 去推理的一个过程
         """
         Generate samples from the model and yield intermediate samples from
         each timestep of diffusion.
@@ -800,22 +772,17 @@ class GaussianDiffusion:
             img = noise
         else:
             img = th.randn(*shape, device=device)
-        # 生成T时刻（最后一个时刻）一个标准的噪声
         if skip_timesteps and init_image is None:
             init_image = th.zeros_like(img)
-        # 如果不输入init_image则代表让我们进行随机采样
 
         indices = list(range(self.num_timesteps - skip_timesteps))[::-1]
-        # 得到一个time_step的时刻，然后将这个range进行逆序，从T..到0
 
         batch_size = shape[0]
         init_image_batch = th.tile(init_image, dims=(batch_size, 1, 1, 1))
-        # bag_image_batch_0 = th.tile(bag_image, dims=(batch_size, 1, 1, 1))
 
         img = self.q_sample(x_start=init_image_batch, t=th.tensor(indices[0], dtype=th.long, device=device),
                             noise=img, )
-        # 输入加的噪声XT，第一个时间戳，和原始图片
-        # 得到的img是加噪后的图片
+
         """
         pre_image = img[0].add(1).div(2).clamp(0, 1)
         from torchvision.transforms import functional as TF
@@ -844,59 +811,48 @@ class GaussianDiffusion:
                 indices = tqdm(indices)
             image_after_step = img
             for i in indices:
-                # 对这个时间进行遍历
                 if flag:
-                    # 除了步骤XT都进来
                     img = th.randn(*shape, device=device)
-                    # 生成随机噪声
                     img = self.q_sample(
                         x_start=init_image_batch,
                         t=th.tensor([i] * shape[0], device=device),
                         noise=img,
                     )
                     image_after_step = img
-                    # 生成这个timestep的前向加噪图（从后向前）
                 if i == self.num_timesteps - skip_timesteps - 1:
-                    # XT时候从这里
                     for r in range(10):
                         t = th.tensor([i] * shape[0], device=device)
 
-                        # 循环10个timestep
                         if randomize_class and "y" in model_kwargs:
                             model_kwargs["y"] = th.Tensor([636]).long().to(device)
                         model_kwargs["y"] = th.Tensor([636]).long().to(device)
-                        # 如果是condition的，并且没有给condition的classlabel
-                        # 那么我就自己随机生成一个
+
                         with th.no_grad():
                             out = self.p_sample(
                                 model,
                                 image_after_step,
-                                # 接受上一步的噪声图来的
+
                                 t,
                                 clip_denoised=clip_denoised,
                                 denoised_fn=denoised_fn,
                                 cond_fn=cond_fn,
                                 model_kwargs=model_kwargs,
                             )
-                            # 将当前的t和image_t得到out，t不断变化
+
 
                             if postprocess_fn is not None:
                                 out = postprocess_fn(out, t)
-                            # p_sample + 后处理
-                            # 得到的out是根据当前的噪声图来预测的Xt-1
+
 
                             yield out
-                            # yield就够了 传回参数
                             flag = out["flag"]
                             image_after_step = out["sample"]
 
                         image_before_step = image_after_step.clone()
                         if r != 9:
-                            # 如果不是第10步 貌似用了之后用了前向噪声的的方差来修正
                             image_after_step = self.undo(
                                 image_before_step, image_after_step,
                                 est_x_0=out['pred_xstart'], t=t - 1, debug=False)
-                            # 这传进去的两个参数一样。。。
                         if flag:
                             break
                     if flag:
@@ -953,7 +909,6 @@ class GaussianDiffusion:
     def p_sample(
             self, model, x, t, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None,
     ):
-        # 从xt去采样出来xt-1
         """
         Sample x_{t-1} from the model at the given timestep.
 
@@ -979,27 +934,18 @@ class GaussianDiffusion:
             denoised_fn=denoised_fn,
             model_kwargs=model_kwargs,
         )
-        # out的输出，有这一步出来的均值，方差，预测的x0等等
-        # 在推理的时候，会不断地调用p_sample函数来得到x0
-        # 用model得出来xt-1均值和方差
+
         noise = th.randn_like(x)
-        # 采样得到去噪的噪声
+
         nonzero_mask = (
             (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
         )  # no noise when t == 0
         flag = None
         if cond_fn is not None:
-            # classifier的时候
-            # 需要对mean进行修正 用classifier进行修正
-            # 这里就是需要用到的是cond_fn给过来的梯度
+
             out["mean"], flag = self.condition_mean(cond_fn, out, x, t, model_kwargs=model_kwargs)
 
-        # 0.5是为了得到标准差
-        # 有了均值和方差就可以采样出来xt
-        # 标准差 = 0.5乘以一个倍数方差再指数运算
-        # 因为0.5是用来开根号的
         sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
-        # sample 即为下次的样本，完成一次去噪
         return {"sample": sample, "pred_xstart": out["pred_xstart"], "flag": flag}
 
     def p_sample_loop(
@@ -1082,7 +1028,6 @@ class GaussianDiffusion:
             randomize_class=False,
             find_init=False
     ):
-        # 去推理的一个过程
         """
         Generate samples from the model and yield intermediate samples from
         each timestep of diffusion.
@@ -1098,21 +1043,17 @@ class GaussianDiffusion:
             img = noise
         else:
             img = th.randn(*shape, device=device)
-        # 生成T时刻（最后一个时刻）一个标准的噪声
         if skip_timesteps and init_image is None:
             init_image = th.zeros_like(img)
-        # 如果不输入init_image则代表让我们进行随机采样
 
         indices = list(range(self.num_timesteps - skip_timesteps))[::-1]
-        # 得到一个time_step的时刻，然后将这个range进行逆序，从T..到0
 
         batch_size = shape[0]
         init_image_batch = th.tile(init_image, dims=(batch_size, 1, 1, 1))
 
         img = self.q_sample(x_start=init_image_batch, t=th.tensor(indices[0], dtype=th.long, device=device),
                             noise=img, )
-        # 输入加的噪声XT，第一个时间戳，和原始图片
-        # 得到的img是加噪后的图片
+
         if progress:
             # Lazy import so that we don't depend on tqdm.
             from tqdm.auto import tqdm
@@ -1126,24 +1067,18 @@ class GaussianDiffusion:
             image_after_step = img
             for i in indices:
 
-                # 对这个时间进行遍历
                 if flag:
-                    # 除了步骤XT都进来
                     img = th.randn(*shape, device=device)
-                    # 生成随机噪声
                     img = self.q_sample(
                         x_start=init_image_batch,
                         t=th.tensor([i] * shape[0], device=device),
                         noise=img,
                     )
                     image_after_step = img
-                    # 生成这个timestep的前向加噪图（从后向前）
                 if i == self.num_timesteps - skip_timesteps - 1:
-                    # XT时候从这里
                     for r in range(10):
                         t = th.tensor([i] * shape[0], device=device)
 
-                        # 循环10个timestep
                         if randomize_class and "y" in model_kwargs:
                             model_kwargs["y"] = th.randint(
                                 low=0,
@@ -1151,43 +1086,36 @@ class GaussianDiffusion:
                                 size=model_kwargs["y"].shape,
                                 device=model_kwargs["y"].device,
                             )
-                        # 如果是condition的，并且没有给condition的classlabel
-                        # 那么我就自己随机生成一个
+
                         with th.no_grad():
                             out = self.p_sample(
                                 model,
                                 image_after_step,
-                                # 接受上一步的噪声图来的
                                 t,
                                 clip_denoised=clip_denoised,
                                 denoised_fn=denoised_fn,
                                 cond_fn=cond_fn,
                                 model_kwargs=model_kwargs,
                             )
-                            # 将当前的t和image_t得到out，t不断变化
 
                             if postprocess_fn is not None:
                                 out = postprocess_fn(out, t)
-                            # p_sample + 后处理
-                            # 得到的out是根据当前的噪声图来预测的Xt-1
+
 
                             yield out
-                            # yield就够了 传回参数
                             flag = out["flag"]
                             image_after_step = out["sample"]
 
                         image_before_step = image_after_step.clone()
                         if r != 9:
-                            # 如果不是第10步 貌似用了之后用了前向噪声的的方差来修正
                             image_after_step = self.undo(
                                 image_before_step, image_after_step,
                                 est_x_0=out['pred_xstart'], t=t - 1, debug=False)
-                            # 这传进去的两个参数一样。。。
                         if flag:
                             break
                     if flag:
                         break
-                    img = image_after_step  # .clone()
+                    img = image_after_step
                 else:
                     t = th.tensor([i] * shape[0], device=device)
 

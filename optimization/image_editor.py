@@ -100,9 +100,8 @@ class CLIPConvLoss(torch.nn.Module):
 
         self.model, clip_preprocess = clip.load(
             self.clip_model_name, device, jit=False)
-        # 声明CLIP model
         self.visual_encoder = CLIPVisualEncoder(self.model)
-        # 在这里 应该是CLIPVisualEncoder
+
 
         self.img_size = 224
         self.model.eval()
@@ -124,11 +123,6 @@ class CLIPConvLoss(torch.nn.Module):
         self.counter = 0
 
     def forward(self, sketch, target, style, list1, list2, can1, can2, mode="train"):
-        # skecth是当前image
-        # target是init_image
-        # style是style_image
-        # list1用来控制和init_image的相似度
-        # list2用来控制和style的相似度
         """
         Parameters
         ----------
@@ -143,7 +137,6 @@ class CLIPConvLoss(torch.nn.Module):
 
         sketch_augs, img_augs, i_style = [self.normalize_transform(x)], [
             self.normalize_transform(y)], [self.normalize_transform(style)]
-        # 对输入图进行变换 使得能够输入
         xs = torch.cat(sketch_augs, dim=0).to(self.device)
         ys = torch.cat(img_augs, dim=0).to(self.device)
         ss = torch.cat(i_style, dim=0).to(self.device)
@@ -312,7 +305,6 @@ class ImageEditor:
         self.image_size = (self.model_config["image_size"], self.model_config["image_size"])
         self.our_parameter = {
             'pa1': 0,
-            # CLIP最后的vector 对齐 目前图片 和
             'pa2': 0,
             'palist1': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             'palist2': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -435,19 +427,17 @@ class ImageEditor:
                 ),
                 clip_denoised=False,
                 model_kwargs={"y": torch.Tensor([636]).long().to(self.device)},
-                # 假设了batch_size == 1
+
                 cond_fn=None,
-                # 无须classifier去修正梯度
+
                 progress=True,
                 skip_timesteps=self.args.skip_timesteps,
                 init_image=self.init_image,
-                # 这里规定了初始的init_image
-                # 在这里传入
+
                 postprocess_fn=None,
                 randomize_class=False,
             )
-            # num = 10 生成10次图片
-            # 也就是重复推理10次
+
             masks = []
 
             for step, mask_sample in enumerate(sample_masks):
@@ -493,10 +483,7 @@ class ImageEditor:
                     if self.args.ddim
                     else self.diffusion.h_sample_loop_progressive
                 )
-                # 获得diffusion的采样函数，来获得sample，也就是一次运行,
-                # 其中获取下面的参数之后，会序列化yield模型，来源源不断生成样本
-                # 这些所有的方法都bind在GaussianDiffusion这个大类框架下
-                # 这时把另一个东西model传进去调用方法
+
                 samples = sample_func(
                     self.model,
                     (
@@ -509,18 +496,15 @@ class ImageEditor:
                     clip_denoised=False,
                     model_kwargs={"y": torch.Tensor([636]).long().to(self.device)},
                     cond_fn=cond_fn,
-                    # 修正梯度
                     progress=True,
                     skip_timesteps=self.args.skip_timesteps,
                     init_image=self.target_image,
-                    # 这里规定了初始的init_image
-                    # 在这里传入
+
                     bag_image=self.init_image,
                     use_mask=self.our_parameter['use_mask'],
                     iterratio=self.our_parameter['iterratio'],
                     dual_iter=self.our_parameter['iterlong'],
                     mixup=self.our_parameter['mix'],
-                    # 原始的bag图的混合占比
                     postprocess_fn=None,
                     randomize_class=True,
                     classi=self.classigo,
@@ -536,7 +520,6 @@ class ImageEditor:
 
                 for j, sample in enumerate(samples):
                     should_save_image = j % save_image_interval == 0 or j == total_steps_with_resample
-                    # 最后的条件是结束
 
                     for b in range(self.args.batch_size):
                         pred_image = sample["pred_xstart"][b]
