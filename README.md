@@ -20,6 +20,10 @@ $ pip install git+https://github.com/openai/CLIP.git
 
 coming soon
 
+**Model Run**
+
+coming soon
+
 ## Example
 
 ![images](IMG/title.png)
