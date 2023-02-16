@@ -18,11 +18,14 @@ $ pip install git+https://github.com/openai/CLIP.git
 
 **Model download**
 
-coming soon
+Download DDPM model pretrained on ImageNet from [model](https://github.com/openai/guided-diffusion)
+Put the pt file under the project root folder as "./256x256_diffusion.pt"
 
 **Model Run**
 
-coming soon
+```
+python main.py -i "input_example/bag1.jpg" --output_path "outputs/outputfile" -tg "input_example/fish1.jpg" --use_range_restart --diff_iter 100 --timestep_respacing 200 --skip_timesteps 80 --use_colormatch --use_noise_aug_all
+```
 
 ## Example
 
